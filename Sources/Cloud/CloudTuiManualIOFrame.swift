@@ -11,6 +11,8 @@ enum CloudTuiManualIOFrame: Equatable, Sendable {
     case resized(surfaceID: UInt64, columns: Int, rows: Int, bytes: Data)
     case detached(surfaceID: UInt64)
     case overflow(surfaceID: UInt64?)
+    /// A `presence-changed` subscribe event (capability `presence-v1`).
+    case presence(CloudPresenceEntry)
     case response(
         requestID: UInt64,
         ok: Bool,

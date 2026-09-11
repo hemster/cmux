@@ -43,7 +43,8 @@ final class CloudTuiManualIOConnection: @unchecked Sendable {
             label: "com.cmux.cloud-manual-io",
             qos: .userInitiated
         ),
-        commandBuilder: CloudTuiManualIOCommand = CloudTuiManualIOCommand()
+        commandBuilder: CloudTuiManualIOCommand = CloudTuiManualIOCommand(),
+        maximumBufferedFrames: Int = CloudTuiManualIOConnection.maximumBufferedFrames
     ) {
         self.socketPath = socketPath
         self.queue = queue
@@ -51,9 +52,10 @@ final class CloudTuiManualIOConnection: @unchecked Sendable {
         // A stalled Ghostty parser must not let a remote output burst grow an
         // unbounded in-memory queue. Dropping a frame would corrupt the VT
         // stream, so the bounded overflow edge closes this attachment and lets
-        // the owner reconnect from a fresh snapshot.
+        // the owner reconnect from a fresh snapshot. Small-frame consumers
+        // (presence) pass a deeper bound.
         (events, eventsContinuation) = AsyncStream<CloudTuiManualIOFrame>.makeStream(
-            bufferingPolicy: .bufferingOldest(Self.maximumBufferedFrames)
+            bufferingPolicy: .bufferingOldest(max(1, maximumBufferedFrames))
         )
         eventsContinuation.onTermination = { [weak self] _ in
             self?.close()

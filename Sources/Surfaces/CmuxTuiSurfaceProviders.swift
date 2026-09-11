@@ -168,7 +168,10 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
         stateRecoveryRefreshQueued = false
         stateRecoveryCount = 0
         eventsFeedWarning = nil
-        for session in manualMirrorSessions.values { session.stop() }
+        for (panelID, session) in manualMirrorSessions {
+            session.stop()
+            CloudPresenceStore.shared.unregisterPane(panelID: panelID)
+        }
         manualMirrorSessions.removeAll()
         manualMirrorSurfaceIDsSocketPath = nil
         for task in remoteTerminalProjectionTasks.values { task.cancel() }
@@ -347,6 +350,9 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
                     switch resolutions[session.terminalID] {
                     case let .resolved(surfaceID):
                         session.updateRemoteSurfaceID(surfaceID)
+                        if let panelID = manualMirrorSessions.first(where: { $0.value === session })?.key {
+                            CloudPresenceStore.shared.updateRemoteSurfaceID(panelID: panelID, remoteSurfaceID: surfaceID)
+                        }
                         reconnectableSessionIDs.insert(ObjectIdentifier(session))
                     case .exited:
                         // The remote shell ended. Stop reconnecting; the pane
@@ -365,9 +371,10 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
                 }
                 closePanes(forExitedTerminals: exitedTerminalIDs)
             }
-            for session in manualMirrorSessions.values
+            for (panelID, session) in manualMirrorSessions
             where reconnectableSessionIDs.contains(ObjectIdentifier(session)) {
                 session.reconnect(socketPath: connected.socketPath)
+                CloudPresenceStore.shared.updateSocketPath(panelID: panelID, socketPath: connected.socketPath)
             }
         } catch {
             guard isCurrentRefresh(lifecycle: lifecycle, refresh: generation) else { return false }
@@ -664,6 +671,7 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
     private func closeManualMirrorPane(panelID: UUID, terminalID: String) {
         materializedPanels.remove(panelID)
         manualMirrorSessions.removeValue(forKey: panelID)?.stop()
+        CloudPresenceStore.shared.unregisterPane(panelID: panelID)
         guard let workspace = AppDelegate.shared?.workspace(containingSurfaceID: panelID) else { return }
         SurfacePaneFactory.closeExited(panelID: panelID, in: workspace.id)
     }
@@ -1608,6 +1616,7 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
         browserPaneTasks.removeValue(forKey: projection.panelID)?.cancel()
         materializedPanels.remove(projection.panelID)
         manualMirrorSessions.removeValue(forKey: projection.panelID)?.stop()
+        CloudPresenceStore.shared.unregisterPane(panelID: projection.panelID)
     }
 
     @discardableResult
@@ -1615,6 +1624,7 @@ final class CmuxTuiSurfaceProvider: SurfaceProvider {
         browserPaneTasks.removeValue(forKey: projection.panelID)?.cancel()
         materializedPanels.remove(projection.panelID)
         manualMirrorSessions.removeValue(forKey: projection.panelID)?.stop()
+        CloudPresenceStore.shared.unregisterPane(panelID: projection.panelID)
         SurfacePaneFactory.close(panelID: projection.panelID, in: projection.workspaceID)
         return false
     }
